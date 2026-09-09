@@ -2,10 +2,14 @@ import os
 import re
 import time
 import joblib
+import nltk
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 
 
 
