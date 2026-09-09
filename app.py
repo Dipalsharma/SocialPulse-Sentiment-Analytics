@@ -1,5 +1,3 @@
-%%writefile dashboard/app.py
-
 import os
 import time
 import joblib
