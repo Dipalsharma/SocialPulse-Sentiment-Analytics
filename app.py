@@ -1,4 +1,3 @@
-
 import os
 import re
 import time
@@ -85,7 +84,7 @@ TOP_WORDS_PATH = os.path.join(
 # =========================================================
 
 @st.cache_resource
-def setup_nltk():
+def initialize_nltk():
 
     resources = [
         ("corpora/stopwords", "stopwords"),
@@ -93,25 +92,38 @@ def setup_nltk():
         ("corpora/omw-1.4", "omw-1.4")
     ]
 
-    for resource_path, package in resources:
+    for resource_path, package_name in resources:
+
         try:
             nltk.data.find(resource_path)
+
         except LookupError:
-            nltk.download(package, quiet=True)
+            nltk.download(
+                package_name,
+                quiet=True
+            )
 
     try:
-        stops = set(stopwords.words("english"))
+        stop_words = set(
+            stopwords.words("english")
+        )
     except LookupError:
-        stops = set()
+        stop_words = set()
 
-    return stops, WordNetLemmatizer()
+    return (
+        stop_words,
+        WordNetLemmatizer()
+    )
 
 
-stop_words, lemmatizer = setup_nltk()
+stop_words, lemmatizer = initialize_nltk()
 
 
-# Preserve negations exactly as used during training
-negation_words = {
+# =========================================================
+# NEGATIONS
+# =========================================================
+
+NEGATIONS = {
     "no", "not", "nor", "never", "none", "neither",
     "don't", "doesn't", "didn't", "isn't", "aren't",
     "wasn't", "weren't", "won't", "wouldn't",
@@ -119,12 +131,12 @@ negation_words = {
     "haven't", "hasn't", "hadn't"
 }
 
-stop_words = stop_words - negation_words
+stop_words = stop_words - NEGATIONS
 
 
 # =========================================================
-# TEXT PREPROCESSING
-# Matches training workflow
+# TEXT CLEANING
+# Matches training preprocessing
 # =========================================================
 
 def clean_text(text):
@@ -181,13 +193,13 @@ def clean_text(text):
 
 
 # =========================================================
-# MODEL LOADING
+# LOAD MODELS
 # =========================================================
 
 @st.cache_resource
-def load_models():
+def load_main_model():
 
-    sentiment_model = joblib.load(
+    model = joblib.load(
         MODEL_PATH
     )
 
@@ -195,28 +207,47 @@ def load_models():
         VECTORIZER_PATH
     )
 
-    topic_model = joblib.load(
+    return model, vectorizer
+
+
+@st.cache_resource
+def load_topic_model():
+
+    if not os.path.exists(TOPIC_MODEL_PATH):
+        return None
+
+    return joblib.load(
         TOPIC_MODEL_PATH
     )
-
-    return sentiment_model, vectorizer, topic_model
 
 
 try:
 
-    model, vectorizer, topic_model = load_models()
+    model, vectorizer = load_main_model()
 
     MODEL_READY = True
     MODEL_ERROR = ""
 
 except Exception as exc:
 
+    model = None
+    vectorizer = None
+
     MODEL_READY = False
     MODEL_ERROR = str(exc)
 
 
+try:
+
+    topic_model = load_topic_model()
+
+except Exception:
+
+    topic_model = None
+
+
 # =========================================================
-# SUNSET ANALYTICS UI
+# CUSTOM UI
 # =========================================================
 
 st.markdown(
@@ -227,31 +258,32 @@ st.markdown(
 
     background:
         radial-gradient(
-            circle at 7% 8%,
-            rgba(245,158,11,.15),
+            circle at 7% 7%,
+            rgba(245,158,11,.16),
             transparent 24%
         ),
         radial-gradient(
-            circle at 94% 9%,
+            circle at 94% 8%,
             rgba(124,58,237,.12),
             transparent 25%
         ),
         linear-gradient(
             180deg,
             #fffaf3 0%,
-            #f7f3ec 100%
+            #f7f3ed 100%
         );
 
-    color: #241f27;
+    color: #28232a;
 }
 
 
 .block-container {
 
     max-width: 1450px;
-    padding-top: 1.6rem;
-    padding-bottom: 4rem;
 
+    padding-top: 1.5rem;
+
+    padding-bottom: 4rem;
 }
 
 
@@ -264,13 +296,12 @@ section[data-testid="stSidebar"] {
     border-right:
         1px solid
         rgba(50,40,30,.08);
-
 }
+
 
 section[data-testid="stSidebar"] * {
 
-    color: #2a2530 !important;
-
+    color: #2b2630 !important;
 }
 
 
@@ -279,6 +310,7 @@ section[data-testid="stSidebar"] * {
 .hero {
 
     position: relative;
+
     overflow: hidden;
 
     padding: 44px;
@@ -291,24 +323,23 @@ section[data-testid="stSidebar"] * {
         linear-gradient(
             120deg,
             #fff0c9,
-            #ffe5db,
-            #eee4ff,
+            #ffe6dc,
+            #eee5ff,
             #fff0c9
         );
 
     background-size: 300% 300%;
 
     animation:
-        sunsetMove 12s ease infinite;
+        heroMove 12s ease infinite;
 
     border:
         1px solid
-        rgba(124,58,237,.10);
+        rgba(124,58,237,.09);
 
     box-shadow:
-        0 20px 55px
-        rgba(76,51,24,.10);
-
+        0 18px 55px
+        rgba(70,45,20,.10);
 }
 
 
@@ -316,10 +347,10 @@ section[data-testid="stSidebar"] * {
 
     position: absolute;
 
-    width: 270px;
-    height: 270px;
+    width: 260px;
+    height: 260px;
 
-    right: -100px;
+    right: -90px;
     top: -120px;
 
     border-radius: 50%;
@@ -327,72 +358,77 @@ section[data-testid="stSidebar"] * {
     background:
         rgba(245,158,11,.16);
 
-    filter: blur(72px);
+    filter: blur(65px);
 
     animation:
-        orbFloat 7s ease-in-out infinite alternate;
-
+        orbMove 7s ease-in-out infinite alternate;
 }
 
 
-.hero-content {
+.hero-inner {
 
     position: relative;
-    z-index: 2;
 
+    z-index: 2;
 }
 
 
-.hero-badge {
+.badge {
 
     display: inline-block;
 
-    padding: 7px 14px;
+    padding:
+        7px 14px;
 
-    border-radius: 999px;
+    border-radius:
+        999px;
 
     background:
-        rgba(255,255,255,.66);
+        rgba(255,255,255,.65);
 
     color:
-        #754219;
+        #77451c;
 
     font-size:
-        .80rem;
+        .78rem;
 
     font-weight:
         800;
-
 }
 
 
 .hero-title {
 
-    margin-top: 14px;
+    margin-top:
+        14px;
 
-    font-size: 3.35rem;
+    font-size:
+        3.3rem;
 
-    font-weight: 900;
+    font-weight:
+        900;
 
-    letter-spacing: -1.8px;
-
-    color: #292329;
-
+    color:
+        #2a2429;
 }
 
 
 .hero-subtitle {
 
-    max-width: 880px;
+    max-width:
+        900px;
 
-    margin-top: 12px;
+    margin-top:
+        10px;
 
-    color: #675f66;
+    font-size:
+        1.05rem;
 
-    font-size: 1.06rem;
+    line-height:
+        1.7;
 
-    line-height: 1.7;
-
+    color:
+        #696168;
 }
 
 
@@ -400,11 +436,14 @@ section[data-testid="stSidebar"] * {
 
 .kpi {
 
-    padding: 22px;
+    padding:
+        22px;
 
-    min-height: 110px;
+    min-height:
+        110px;
 
-    border-radius: 22px;
+    border-radius:
+        22px;
 
     background:
         rgba(255,255,255,.88);
@@ -420,9 +459,6 @@ section[data-testid="stSidebar"] * {
     transition:
         all .28s ease;
 
-    animation:
-        rise .6s ease both;
-
 }
 
 
@@ -433,62 +469,73 @@ section[data-testid="stSidebar"] * {
 
     box-shadow:
         0 18px 38px
-        rgba(55,36,15,.13);
+        rgba(55,36,15,.12);
 
 }
 
 
 .kpi-label {
 
-    color: #827a80;
+    color:
+        #81787e;
 
-    font-size: .82rem;
+    font-size:
+        .82rem;
 
-    font-weight: 700;
-
+    font-weight:
+        700;
 }
 
 
 .kpi-value {
 
-    margin-top: 8px;
+    margin-top:
+        8px;
 
-    color: #28232a;
+    font-size:
+        1.55rem;
 
-    font-size: 1.55rem;
+    font-weight:
+        900;
 
-    font-weight: 900;
-
+    color:
+        #28232a;
 }
 
 
-/* SECTION */
+/* SECTIONS */
 
 .section-title {
 
-    margin-top: 38px;
+    margin-top:
+        38px;
 
-    margin-bottom: 9px;
+    margin-bottom:
+        8px;
 
-    font-size: 1.72rem;
+    font-size:
+        1.7rem;
 
-    font-weight: 900;
+    font-weight:
+        900;
 
-    color: #28232a;
-
+    color:
+        #28232a;
 }
 
 
-/* CARDS */
+/* CARD */
 
 .card {
 
-    padding: 22px;
+    padding:
+        22px;
 
-    border-radius: 22px;
+    border-radius:
+        22px;
 
     background:
-        rgba(255,255,255,.91);
+        rgba(255,255,255,.90);
 
     border:
         1px solid
@@ -500,7 +547,6 @@ section[data-testid="stSidebar"] * {
 
     transition:
         all .28s ease;
-
 }
 
 
@@ -512,11 +558,10 @@ section[data-testid="stSidebar"] * {
     box-shadow:
         0 16px 38px
         rgba(55,36,15,.10);
-
 }
 
 
-/* INPUT */
+/* TEXT INPUT */
 
 .stTextArea textarea {
 
@@ -528,29 +573,27 @@ section[data-testid="stSidebar"] * {
 
     border:
         1px solid
-        #d3cbc3 !important;
+        #cfc5bd !important;
 
     border-radius:
         16px !important;
 
     font-size:
         1rem !important;
-
 }
 
 
 .stTextArea textarea::placeholder {
 
     color:
-        #81777e !important;
+        #776e74 !important;
 
     opacity:
         1 !important;
-
 }
 
 
-/* BUTTON */
+/* BUTTONS */
 
 .stButton > button {
 
@@ -560,6 +603,9 @@ section[data-testid="stSidebar"] * {
     border-radius:
         13px !important;
 
+    border:
+        none !important;
+
     background:
         linear-gradient(
             135deg,
@@ -568,21 +614,17 @@ section[data-testid="stSidebar"] * {
         ) !important;
 
     color:
-        #ffffff !important;
+        white !important;
 
     font-weight:
         800 !important;
 
-    border:
-        none !important;
-
     box-shadow:
         0 8px 20px
-        rgba(124,58,237,.14);
+        rgba(124,58,237,.13);
 
     transition:
         all .25s ease !important;
-
 }
 
 
@@ -594,19 +636,18 @@ section[data-testid="stSidebar"] * {
     box-shadow:
         0 14px 30px
         rgba(124,58,237,.20);
-
 }
 
 
 /* RESULT */
 
-.prediction {
-
-    margin-top:
-        18px;
+.result {
 
     padding:
         28px;
+
+    margin-top:
+        20px;
 
     border-radius:
         22px;
@@ -616,11 +657,10 @@ section[data-testid="stSidebar"] * {
 
     animation:
         resultPop .45s ease both;
-
 }
 
 
-.pred-positive {
+.result-positive {
 
     background:
         linear-gradient(
@@ -631,12 +671,11 @@ section[data-testid="stSidebar"] * {
 
     border:
         1px solid
-        #abdcc1;
-
+        #a9ddc0;
 }
 
 
-.pred-negative {
+.result-negative {
 
     background:
         linear-gradient(
@@ -647,42 +686,39 @@ section[data-testid="stSidebar"] * {
 
     border:
         1px solid
-        #ebb5b0;
-
+        #ecb4af;
 }
 
 
-.pred-title {
+.result-title {
 
     font-size:
         2rem;
 
     font-weight:
         900;
-
 }
 
 
-.pred-sub {
+.result-sub {
 
     margin-top:
         8px;
 
     color:
-        #655d65;
-
+        #665e64;
 }
 
 
-/* INSIGHT */
+/* INFO */
 
 .insight {
 
-    margin-top:
-        18px;
-
     padding:
         18px 20px;
+
+    margin-top:
+        18px;
 
     border-radius:
         17px;
@@ -692,11 +728,10 @@ section[data-testid="stSidebar"] * {
 
     border:
         1px solid
-        #f0d399;
+        #efd299;
 
     color:
-        #604720;
-
+        #624820;
 }
 
 
@@ -708,24 +743,23 @@ section[data-testid="stSidebar"] * {
         60px;
 
     padding:
-        24px;
+        25px;
 
     text-align:
         center;
 
     color:
-        #8a8287;
+        #898187;
 
     border-top:
         1px solid
         rgba(50,40,30,.08);
-
 }
 
 
 /* ANIMATIONS */
 
-@keyframes sunsetMove {
+@keyframes heroMove {
 
     0% {
         background-position: 0% 50%;
@@ -742,7 +776,7 @@ section[data-testid="stSidebar"] * {
 }
 
 
-@keyframes orbFloat {
+@keyframes orbMove {
 
     from {
         transform:
@@ -752,25 +786,8 @@ section[data-testid="stSidebar"] * {
 
     to {
         transform:
-            translate(-32px,24px)
+            translate(-35px,25px)
             scale(1.15);
-    }
-
-}
-
-
-@keyframes rise {
-
-    from {
-        opacity: 0;
-        transform:
-            translateY(12px);
-    }
-
-    to {
-        opacity: 1;
-        transform:
-            translateY(0);
     }
 
 }
@@ -780,14 +797,31 @@ section[data-testid="stSidebar"] * {
 
     from {
         opacity: 0;
+
         transform:
             scale(.96);
     }
 
     to {
         opacity: 1;
+
         transform:
             scale(1);
+    }
+
+}
+
+
+@media (max-width: 800px) {
+
+    .hero {
+        padding:
+            30px 24px;
+    }
+
+    .hero-title {
+        font-size:
+            2.25rem;
     }
 
 }
@@ -831,11 +865,15 @@ with st.sidebar:
     st.markdown("---")
 
     st.caption(
-        "Sentiment140 • 1.6M Tweets"
+        "Sentiment140"
     )
 
     st.caption(
-        "NLP • TF-IDF • ML • Clustering"
+        "1.6M Tweets"
+    )
+
+    st.caption(
+        "NLP • TF-IDF • ML • K-Means"
     )
 
 
@@ -849,9 +887,9 @@ st.html(
 
         <div class="hero-orb"></div>
 
-        <div class="hero-content">
+        <div class="hero-inner">
 
-            <div class="hero-badge">
+            <div class="badge">
                 ☀️ AI-POWERED SOCIAL MEDIA INTELLIGENCE
             </div>
 
@@ -863,7 +901,7 @@ st.html(
                 Discover what people are saying,
                 how sentiment moves, which themes
                 dominate the conversation, and why
-                the model makes a prediction.
+                the model makes its prediction.
             </div>
 
         </div>
@@ -877,17 +915,17 @@ st.html(
 # KPI
 # =========================================================
 
-kpi_cols = st.columns(4)
+cols = st.columns(4)
 
 kpis = [
     ("Dataset", "1.6M Tweets"),
-    ("Sentiment", "50% / 50%"),
-    ("Clusters", "6"),
+    ("Sentiment Split", "50% / 50%"),
+    ("Discovered Clusters", "6"),
     ("Best Accuracy", "80.61%")
 ]
 
 for col, (label, value) in zip(
-    kpi_cols,
+    cols,
     kpis
 ):
 
@@ -896,22 +934,25 @@ for col, (label, value) in zip(
         st.html(
             f"""
             <div class="kpi">
+
                 <div class="kpi-label">
                     {label}
                 </div>
+
                 <div class="kpi-value">
                     {value}
                 </div>
+
             </div>
             """
         )
 
 
 # =========================================================
-# HELPER: PREDICT
+# PREDICTION ENGINE
 # =========================================================
 
-def predict_text(text):
+def analyze_post(text):
 
     cleaned = clean_text(text)
 
@@ -930,9 +971,21 @@ def predict_text(text):
         vector
     )[0]
 
-    topic_id = int(
-        topic_model.predict(vector)[0]
-    ) + 1
+    topic_id = None
+
+    if topic_model is not None:
+
+        try:
+
+            topic_id = int(
+                topic_model.predict(
+                    vector
+                )[0]
+            ) + 1
+
+        except Exception:
+
+            topic_id = None
 
     return {
         "cleaned": cleaned,
@@ -944,140 +997,13 @@ def predict_text(text):
 
 
 # =========================================================
-# HELPER: DISPLAY PREDICTION
+# CONTRIBUTIONS
 # =========================================================
 
-def display_prediction(result):
+def get_contributions(vector):
 
-    prediction = result["prediction"]
-
-    probabilities = result["probabilities"]
-
-    positive_probability = (
-        float(probabilities[1]) * 100
-    )
-
-    negative_probability = (
-        float(probabilities[0]) * 100
-    )
-
-    confidence = (
-        positive_probability
-        if prediction == 1
-        else negative_probability
-    )
-
-    topic_id = result["topic_id"]
-
-    if prediction == 1:
-
-        st.html(
-            f"""
-            <div class="prediction pred-positive">
-
-                <div class="pred-title">
-                    😊 POSITIVE
-                </div>
-
-                <div class="pred-sub">
-                    Model confidence:
-                    <b>{confidence:.2f}%</b>
-                </div>
-
-            </div>
-            """
-        )
-
-    else:
-
-        st.html(
-            f"""
-            <div class="prediction pred-negative">
-
-                <div class="pred-title">
-                    😞 NEGATIVE
-                </div>
-
-                <div class="pred-sub">
-                    Model confidence:
-                    <b>{confidence:.2f}%</b>
-                </div>
-
-            </div>
-            """
-        )
-
-    a, b, c = st.columns(3)
-
-    with a:
-
-        st.metric(
-            "Positive Probability",
-            f"{positive_probability:.2f}%"
-        )
-
-    with b:
-
-        st.metric(
-            "Negative Probability",
-            f"{negative_probability:.2f}%"
-        )
-
-    with c:
-
-        st.metric(
-            "Detected Cluster",
-            f"Cluster {topic_id}"
-        )
-
-    probability_df = pd.DataFrame(
-        {
-            "Sentiment": [
-                "Positive",
-                "Negative"
-            ],
-            "Probability": [
-                positive_probability,
-                negative_probability
-            ]
-        }
-    )
-
-    fig = px.bar(
-        probability_df,
-        x="Sentiment",
-        y="Probability",
-        text="Probability",
-        title="Prediction Probability"
-    )
-
-    fig.update_traces(
-        texttemplate="%{text:.1f}%",
-        textposition="outside"
-    )
-
-    fig.update_layout(
-        height=370,
-        yaxis={
-            "title": "Probability (%)",
-            "range": [0, 105]
-        },
-        xaxis_title="",
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)"
-    )
-
-    st.plotly_chart(
-        fig,
-        width="stretch"
-    )
-
-
-# =========================================================
-# HELPER: EXPLAIN CURRENT PREDICTION
-# =========================================================
-
-def prediction_contributions(vector):
+    if not MODEL_READY:
+        return [], []
 
     feature_names = (
         vectorizer
@@ -1090,42 +1016,181 @@ def prediction_contributions(vector):
 
     contributions = []
 
-    for idx, value in zip(
+    for index, value in zip(
         row.col,
         row.data
     ):
 
-        contribution = (
+        score = (
             float(value)
             *
-            float(coefficients[idx])
+            float(coefficients[index])
         )
 
         contributions.append(
             (
-                feature_names[idx],
-                contribution
+                feature_names[index],
+                score
             )
         )
 
     positive = sorted(
         [
-            x for x in contributions
-            if x[1] > 0
+            item
+            for item in contributions
+            if item[1] > 0
         ],
-        key=lambda x: x[1],
+        key=lambda item: item[1],
         reverse=True
     )[:6]
 
     negative = sorted(
         [
-            x for x in contributions
-            if x[1] < 0
+            item
+            for item in contributions
+            if item[1] < 0
         ],
-        key=lambda x: x[1]
+        key=lambda item: item[1]
     )[:6]
 
     return positive, negative
+
+
+# =========================================================
+# DISPLAY RESULT
+# =========================================================
+
+def display_result(result):
+
+    probabilities = result["probabilities"]
+
+    positive = (
+        float(probabilities[1]) * 100
+    )
+
+    negative = (
+        float(probabilities[0]) * 100
+    )
+
+    prediction = result["prediction"]
+
+    confidence = (
+        positive
+        if prediction == 1
+        else negative
+    )
+
+    if prediction == 1:
+
+        st.html(
+            f"""
+            <div class="result result-positive">
+
+                <div class="result-title">
+                    😊 POSITIVE
+                </div>
+
+                <div class="result-sub">
+                    Confidence:
+                    <b>{confidence:.2f}%</b>
+                </div>
+
+            </div>
+            """
+        )
+
+    else:
+
+        st.html(
+            f"""
+            <div class="result result-negative">
+
+                <div class="result-title">
+                    😞 NEGATIVE
+                </div>
+
+                <div class="result-sub">
+                    Confidence:
+                    <b>{confidence:.2f}%</b>
+                </div>
+
+            </div>
+            """
+        )
+
+    a, b, c = st.columns(3)
+
+    with a:
+
+        st.metric(
+            "Positive",
+            f"{positive:.2f}%"
+        )
+
+    with b:
+
+        st.metric(
+            "Negative",
+            f"{negative:.2f}%"
+        )
+
+    with c:
+
+        if result["topic_id"] is not None:
+
+            st.metric(
+                "Detected Cluster",
+                f"Cluster {result['topic_id']}"
+            )
+
+        else:
+
+            st.metric(
+                "Detected Cluster",
+                "Unavailable"
+            )
+
+    chart_df = pd.DataFrame(
+        {
+            "Sentiment": [
+                "Positive",
+                "Negative"
+            ],
+            "Probability": [
+                positive,
+                negative
+            ]
+        }
+    )
+
+    fig = px.bar(
+        chart_df,
+        x="Sentiment",
+        y="Probability",
+        text="Probability",
+        title="Prediction Confidence Breakdown"
+    )
+
+    fig.update_traces(
+        texttemplate="%{text:.1f}%",
+        textposition="outside"
+    )
+
+    fig.update_layout(
+        height=360,
+        yaxis={
+            "title": "Probability (%)",
+            "range": [0, 105]
+        },
+        xaxis_title="",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+
+    st.plotly_chart(
+        fig,
+        use_container_width=True
+    )
 
 
 # =========================================================
@@ -1143,92 +1208,81 @@ if page == "Home":
     )
 
     st.write(
-        "Explore sentiment, trends, topics and "
-        "machine-learning insights — or analyze "
-        "a post instantly."
+        "Explore the pulse of social media or try "
+        "an instant sentiment prediction."
     )
 
     st.markdown(
         "### ⚡ Quick Demo"
     )
 
-    if "home_text" not in st.session_state:
+    if "demo_text" not in st.session_state:
 
-        st.session_state.home_text = ""
+        st.session_state.demo_text = ""
 
-    st.html(
-        '<div class="action-card">'
-    )
+    d1, d2, d3 = st.columns(3)
 
-    q1, q2, q3 = st.columns(3)
-
-    with q1:
+    with d1:
 
         if st.button(
-            "😊 Happy Example",
+            "😊 Happy",
             use_container_width=True
         ):
 
-            st.session_state.home_text = (
+            st.session_state.demo_text = (
                 "I absolutely love this product! "
-                "It is amazing and works perfectly."
+                "It works perfectly."
             )
 
-    with q2:
+    with d2:
 
         if st.button(
-            "😡 Angry Example",
+            "😡 Angry",
             use_container_width=True
         ):
 
-            st.session_state.home_text = (
+            st.session_state.demo_text = (
                 "This service is terrible. "
                 "I am extremely disappointed."
             )
 
-    with q3:
+    with d3:
 
         if st.button(
-            "🤩 Excited Example",
+            "🤩 Excited",
             use_container_width=True
         ):
 
-            st.session_state.home_text = (
+            st.session_state.demo_text = (
                 "What an amazing day! "
                 "Everything is going perfectly."
             )
 
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True
-    )
-
     home_text = st.text_area(
         "What are people saying?",
-        value=st.session_state.home_text,
+        value=st.session_state.demo_text,
         placeholder=(
             "Write a social media post here..."
         ),
-        height=150,
-        key="home_input"
+        height=150
     )
 
     if st.button(
         "✨ Analyze Sentiment",
         use_container_width=True,
-        key="home_analyze"
+        key="home_predict"
     ):
 
         if not MODEL_READY:
 
             st.error(
-                f"Model loading failed: {MODEL_ERROR}"
+                f"Model could not be loaded: {MODEL_ERROR}"
             )
 
         elif not home_text.strip():
 
             st.warning(
-                "Please enter a social media post first."
+                "Please enter a social media post."
             )
 
         else:
@@ -1239,20 +1293,19 @@ if page == "Home":
 
                 time.sleep(.35)
 
-                result = predict_text(
+                result = analyze_post(
                     home_text
                 )
 
             if result is None:
 
                 st.error(
-                    "The entered text became empty "
-                    "after preprocessing."
+                    "No usable text remained after preprocessing."
                 )
 
             else:
 
-                display_prediction(result)
+                display_result(result)
 
 
 # =========================================================
@@ -1262,11 +1315,12 @@ if page == "Home":
 elif page == "Pulse":
 
     st.html(
-        """
-        <div class="section-title">
-            💓 Sentiment Pulse
-        </div>
-        """
+        '<div class="section-title">💓 Sentiment Pulse</div>'
+    )
+
+    st.write(
+        "The overall Positive vs Negative balance "
+        "across the 1.6M-tweet dataset."
     )
 
     pulse_df = pd.DataFrame(
@@ -1286,12 +1340,12 @@ elif page == "Pulse":
         pulse_df,
         names="Sentiment",
         values="Tweets",
-        hole=.68,
+        hole=.62,
         title="Overall Sentiment Balance"
     )
 
     fig.update_traces(
-        textinfo="percent",
+        textinfo="percent+label",
         hovertemplate=(
             "<b>%{label}</b><br>"
             "Tweets: %{value:,}<br>"
@@ -1308,16 +1362,15 @@ elif page == "Pulse":
 
     st.plotly_chart(
         fig,
-        width="stretch"
+        use_container_width=True
     )
 
     st.html(
         """
         <div class="insight">
 
-            💡 The dataset contains an equal number
-            of Positive and Negative tweets:
-            <b>800,000 each.</b>
+            💡 <b>Dataset balance:</b>
+            800,000 Positive and 800,000 Negative tweets.
 
         </div>
         """
@@ -1331,11 +1384,7 @@ elif page == "Pulse":
 elif page == "Trends":
 
     st.html(
-        """
-        <div class="section-title">
-            📈 Sentiment Trends
-        </div>
-        """
+        '<div class="section-title">📈 Sentiment Trends</div>'
     )
 
     if os.path.exists(MONTHLY_PATH):
@@ -1346,14 +1395,14 @@ elif page == "Trends":
 
         month_col = monthly.columns[0]
 
-        long_data = monthly.melt(
+        long_monthly = monthly.melt(
             id_vars=[month_col],
             var_name="Sentiment",
             value_name="Percentage"
         )
 
         fig = px.area(
-            long_data,
+            long_monthly,
             x=month_col,
             y="Percentage",
             color="Sentiment",
@@ -1363,16 +1412,22 @@ elif page == "Trends":
 
         fig.update_layout(
             height=520,
-            hovermode="x unified",
             yaxis_title="Sentiment Share (%)",
             xaxis_title="Month",
+            hovermode="x unified",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
 
         st.plotly_chart(
             fig,
-            width="stretch"
+            use_container_width=True
+        )
+
+    else:
+
+        st.warning(
+            "Monthly trend data is unavailable."
         )
 
     st.markdown(
@@ -1381,21 +1436,21 @@ elif page == "Trends":
 
     if os.path.exists(ANOMALY_PATH):
 
-        anomaly_df = pd.read_csv(
+        anomaly = pd.read_csv(
             ANOMALY_PATH
         )
 
-        if "Anomaly" in anomaly_df.columns:
+        if "Anomaly" in anomaly.columns:
 
             flags = (
-                anomaly_df["Anomaly"]
+                anomaly["Anomaly"]
                 .astype(str)
                 .str.strip()
                 .str.lower()
                 .eq("true")
             )
 
-            detected = anomaly_df[
+            detected = anomaly[
                 flags
             ]
 
@@ -1419,14 +1474,20 @@ elif page == "Trends":
                 )
 
         with st.expander(
-            "View full anomaly data"
+            "View anomaly analysis"
         ):
 
             st.dataframe(
-                anomaly_df,
+                anomaly,
                 use_container_width=True,
                 hide_index=True
             )
+
+    else:
+
+        st.info(
+            "Anomaly analysis data is unavailable."
+        )
 
 
 # =========================================================
@@ -1436,16 +1497,12 @@ elif page == "Trends":
 elif page == "Topics":
 
     st.html(
-        """
-        <div class="section-title">
-            🧩 Topic Universe
-        </div>
-        """
+        '<div class="section-title">🧩 Topic Intelligence</div>'
     )
 
     st.write(
-        "Six latent conversation clusters were "
-        "discovered using K-Means on TF-IDF features."
+        "Six latent conversation clusters discovered "
+        "using K-Means clustering on TF-IDF features."
     )
 
     if os.path.exists(
@@ -1478,7 +1535,7 @@ elif page == "Topics":
 
         st.plotly_chart(
             fig,
-            width="stretch"
+            use_container_width=True
         )
 
     if os.path.exists(
@@ -1512,19 +1569,19 @@ elif page == "Topics":
             .reset_index()
         )
 
-        first_col = (
+        topic_col = (
             topic_sentiment.columns[0]
         )
 
         long_topic = topic_sentiment.melt(
-            id_vars=[first_col],
+            id_vars=[topic_col],
             var_name="Sentiment",
             value_name="Percentage"
         )
 
         fig = px.bar(
             long_topic,
-            x=first_col,
+            x=topic_col,
             y="Percentage",
             color="Sentiment",
             barmode="group",
@@ -1533,13 +1590,14 @@ elif page == "Topics":
 
         fig.update_layout(
             height=500,
+            yaxis_title="Percentage (%)",
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)"
         )
 
         st.plotly_chart(
             fig,
-            width="stretch"
+            use_container_width=True
         )
 
 
@@ -1550,11 +1608,7 @@ elif page == "Topics":
 elif page == "Language":
 
     st.html(
-        """
-        <div class="section-title">
-            🔤 Language Intelligence
-        </div>
-        """
+        '<div class="section-title">🔤 Language Intelligence</div>'
     )
 
     if os.path.exists(
@@ -1568,17 +1622,22 @@ elif page == "Language":
         word_col = words.columns[0]
         freq_col = words.columns[1]
 
-        words_sorted = words.sort_values(
+        words = words.sort_values(
             freq_col,
             ascending=True
         )
 
         fig = px.bar(
-            words_sorted,
+            words,
             x=freq_col,
             y=word_col,
             orientation="h",
+            text=freq_col,
             title="Top 20 Most Frequent Words"
+        )
+
+        fig.update_traces(
+            textposition="outside"
         )
 
         fig.update_layout(
@@ -1589,37 +1648,37 @@ elif page == "Language":
 
         st.plotly_chart(
             fig,
-            width="stretch"
+            use_container_width=True
         )
 
     a, b = st.columns(2)
 
     with a:
 
-        path = os.path.join(
+        positive_path = os.path.join(
             ASSET_DIR,
             "positive_wordcloud.png"
         )
 
-        if os.path.exists(path):
+        if os.path.exists(positive_path):
 
             st.image(
-                path,
+                positive_path,
                 caption="Positive Language",
                 use_container_width=True
             )
 
     with b:
 
-        path = os.path.join(
+        negative_path = os.path.join(
             ASSET_DIR,
             "negative_wordcloud.png"
         )
 
-        if os.path.exists(path):
+        if os.path.exists(negative_path):
 
             st.image(
-                path,
+                negative_path,
                 caption="Negative Language",
                 use_container_width=True
             )
@@ -1632,11 +1691,7 @@ elif page == "Language":
 elif page == "Models":
 
     st.html(
-        """
-        <div class="section-title">
-            🤖 Model Arena
-        </div>
-        """
+        '<div class="section-title">🤖 Model Arena</div>'
     )
 
     performance = pd.DataFrame(
@@ -1661,7 +1716,7 @@ elif page == "Models":
                 78.09,
                 82.25
             ],
-            "F1": [
+            "F1 Score": [
                 80.92,
                 78.43,
                 80.70
@@ -1670,7 +1725,7 @@ elif page == "Models":
     )
 
     selected_name = st.selectbox(
-        "Explore model",
+        "Inspect model",
         performance["Model"]
     )
 
@@ -1679,46 +1734,46 @@ elif page == "Models":
         == selected_name
     ].iloc[0]
 
-    metrics = [
+    categories = [
         "Accuracy",
         "Precision",
         "Recall",
-        "F1"
+        "F1 Score"
     ]
 
     values = [
         selected["Accuracy"],
         selected["Precision"],
         selected["Recall"],
-        selected["F1"]
+        selected["F1 Score"]
     ]
 
-    fig = go.Figure()
+    radar = go.Figure()
 
-    fig.add_trace(
+    radar.add_trace(
         go.Scatterpolar(
             r=values + [values[0]],
-            theta=metrics + [metrics[0]],
+            theta=categories + [categories[0]],
             fill="toself",
             name=selected_name
         )
     )
 
-    fig.update_layout(
+    radar.update_layout(
+        height=520,
         polar=dict(
             radialaxis=dict(
                 visible=True,
-                range=[70,90]
+                range=[70, 90]
             )
         ),
-        height=540,
         showlegend=False,
         paper_bgcolor="rgba(0,0,0,0)"
     )
 
     st.plotly_chart(
-        fig,
-        width="stretch"
+        radar,
+        use_container_width=True
     )
 
     st.dataframe(
@@ -1731,8 +1786,8 @@ elif page == "Models":
         """
         <div class="insight">
 
-            🏆 <b>Best overall:</b>
-            Logistic Regression — 80.61% test accuracy
+            🏆 <b>Best overall model:</b>
+            Logistic Regression with 80.61% test accuracy
             and 80.92% F1 score.
 
         </div>
@@ -1747,11 +1802,7 @@ elif page == "Models":
 elif page == "Predict":
 
     st.html(
-        """
-        <div class="section-title">
-            🔮 Predict
-        </div>
-        """
+        '<div class="section-title">🔮 Live Prediction</div>'
     )
 
     st.write(
@@ -1762,7 +1813,7 @@ elif page == "Predict":
     if not MODEL_READY:
 
         st.error(
-            f"Model loading failed: {MODEL_ERROR}"
+            f"Model could not be loaded: {MODEL_ERROR}"
         )
 
     else:
@@ -1796,19 +1847,19 @@ elif page == "Predict":
 
                     time.sleep(.35)
 
-                    result = predict_text(
+                    result = analyze_post(
                         text
                     )
 
                 if result is None:
 
                     st.error(
-                        "The text became empty after preprocessing."
+                        "No usable text remained after preprocessing."
                     )
 
                 else:
 
-                    display_prediction(
+                    display_result(
                         result
                     )
 
@@ -1821,7 +1872,7 @@ elif page == "Predict":
                     )
 
                     positive, negative = (
-                        prediction_contributions(
+                        get_contributions(
                             result["vector"]
                         )
                     )
@@ -1830,9 +1881,9 @@ elif page == "Predict":
                         "### 🧠 Why this prediction?"
                     )
 
-                    left, right = st.columns(2)
+                    a, b = st.columns(2)
 
-                    with left:
+                    with a:
 
                         st.markdown(
                             "#### Positive contributors"
@@ -1855,10 +1906,10 @@ elif page == "Predict":
                         else:
 
                             st.info(
-                                "No strong positive feature found."
+                                "No strong positive contributor."
                             )
 
-                    with right:
+                    with b:
 
                         st.markdown(
                             "#### Negative contributors"
@@ -1881,12 +1932,12 @@ elif page == "Predict":
                         else:
 
                             st.info(
-                                "No strong negative feature found."
+                                "No strong negative contributor."
                             )
 
 
 # =========================================================
-# WHY?
+# WHY / EXPLAINABILITY
 # =========================================================
 
 elif page == "Why?":
@@ -1900,9 +1951,8 @@ elif page == "Why?":
     )
 
     st.write(
-        "These are the TF-IDF features with the strongest "
-        "positive and negative influence on the Logistic "
-        "Regression classifier."
+        "These features have the strongest learned "
+        "influence on the Logistic Regression classifier."
     )
 
     if MODEL_READY:
@@ -1912,7 +1962,9 @@ elif page == "Why?":
             .get_feature_names_out()
         )
 
-        coefficients = model.coef_[0]
+        coefficients = (
+            model.coef_[0]
+        )
 
         explanation = pd.DataFrame(
             {
@@ -1979,7 +2031,7 @@ elif page == "Why?":
             x="Coefficient",
             y="Feature",
             orientation="h",
-            title="Most Influential Sentiment Features"
+            title="Most Influential Features"
         )
 
         fig.update_layout(
@@ -1990,7 +2042,25 @@ elif page == "Why?":
 
         st.plotly_chart(
             fig,
-            width="stretch"
+            use_container_width=True
+        )
+
+        st.html(
+            """
+            <div class="insight">
+
+                💡 Positive coefficients push the prediction
+                toward Positive sentiment, while negative
+                coefficients push it toward Negative sentiment.
+
+            </div>
+            """
+        )
+
+    else:
+
+        st.error(
+            "The trained model is unavailable."
         )
 
 
@@ -2013,4 +2083,3 @@ st.html(
     </div>
     """
 )
-
